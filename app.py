@@ -484,6 +484,6 @@ if st.session_state.info_gathered=="YES":
         st.download_button(
             label="📄 Download Patient Intake PDF",
             data=pdf_bytes,
-            file_name="patient_intake_form.pdf",
+            file_name=report_filename,
             mime="application/pdf"
         )
