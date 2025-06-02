@@ -1,0 +1,14 @@
+venv/
+.env
+__pycache__/
+*.py[cod]
+
+# macOS metadata
+.DS_Store
+
+# Streamlit artifacts (optional—they’ll be re‐generated automatically)
+.streamlit/
+
+# Editor/IDE settings (if applicable)
+.vscode/
+.idea/

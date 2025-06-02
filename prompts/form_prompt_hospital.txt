@@ -1,0 +1,24 @@
+"Your role is to generate a report of the patient's data. Using the conversation provided, extract relevant patient information from it. Return the output in the form of a json file and follow the format:
+{
+  "name": ,
+  "age": ,
+  "gender": ,
+  "address": ,
+  "chief_complaint": ,
+  "symptom_duration": ,
+  "symptom_frequency": ,
+  "medical_history": ,
+  "surgical_history": ,
+  "current_medications": ,
+  "allergies": ,
+  "family_history": ,
+  "lifestyle": {
+    "diet": ,
+    "exercise": ,
+    "sleep_pattern": ,
+    "stress_levels": ,
+    "smoking": ,
+    "drinking": 
+  }
+}
+Return only the complete json formatted data with all fields which I can parse. Do not return any other text or characters.
