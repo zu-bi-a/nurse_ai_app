@@ -1,5 +1,7 @@
 from fpdf import FPDF
-import io, re
+import io
+import re
+import datetime   # <-- import datetime here
 
 def json_to_pdf(data: dict) -> bytes:
     # Mapping from JSON keys to human-readable labels
@@ -40,8 +42,17 @@ def json_to_pdf(data: dict) -> bytes:
 
     # Title
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "IVF Patient Intake Summary", ln=True, align="C")
-    pdf.ln(10)
+    pdf.cell(0, 10, "Patient Intake Summary", ln=True, align="C")
+    pdf.ln(5)
+
+    # ─── Insert current date and time ─────────────────────────────────────────────────
+    now = datetime.datetime.now()
+    formatted = now.strftime("%Y-%m-%d  %H:%M:%S")  # e.g. "2025-06-02  14:30:05"
+    pdf.set_font("Arial", "", 10)
+    # Place date at left margin
+    pdf.cell(0, 6, f"Generated on: {formatted}", ln=True, align="L")
+    pdf.ln(5)
+    # ────────────────────────────────────────────────────────────────────────────────
 
     def add_kv(key, value, indent=0):
         # Determine the label (fallback to raw key if not found)

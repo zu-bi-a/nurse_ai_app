@@ -371,45 +371,31 @@ with col_right:
     if "current_response_id" not in st.session_state:
         st.session_state.current_response_id = None
     
-    # Only display the last user message and bot reply if they exist
-    if len(st.session_state.messages) >= 2:
-        # Get the last user message and bot reply
-        last_user_msg = None
-        last_bot_msg = None
+    # Wrap messages in a fixed height container
+    with st.container(height=600):
+        # Display all messages in the conversation
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
         
-        # Find the last user and assistant messages
-        for msg in reversed(st.session_state.messages):
-            if msg["role"] == "assistant" and last_bot_msg is None:
-                last_bot_msg = msg
-            elif msg["role"] == "user" and last_user_msg is None:
-                last_user_msg = msg
-            
-            # Break once we have both
-            if last_user_msg and last_bot_msg:
-                break
-        
-        # Display the last exchange
-        if last_user_msg:
-            with st.chat_message("user"):
-                st.markdown(last_user_msg["content"])
-        if last_bot_msg:
-            with st.chat_message("assistant"):
-                st.markdown(last_bot_msg["content"])
+        if user_input:
+            st.chat_message("user").markdown(user_input)
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            response = client.responses.create(
+                model=MODEL,
+                instructions=system_prompt,
+                input=user_input,
+                previous_response_id=st.session_state.current_response_id,
+            )
+            print(response)
+            st.session_state.current_response_id = response.id
+            bot_reply = response.output_text
+            lang = detect_script(bot_reply)
+            st.chat_message("assistant").markdown(bot_reply)
+            st.session_state.messages.append({"role": "assistant", "content": bot_reply})
     
+    # Keep audio and other elements outside the scrollable container
     if user_input:
-        st.chat_message("user").markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        response = client.responses.create(
-            model=MODEL,
-            instructions=system_prompt,
-            input=user_input,
-            previous_response_id=st.session_state.current_response_id,
-        )
-        print(response)
-        st.session_state.current_response_id = response.id
-        bot_reply = response.output_text
-        lang = detect_script(bot_reply)
-        st.chat_message("assistant").markdown(bot_reply)
         # PLAY BOT MESSAGE AS AUDIO HERE
         # Choose a multilingual voice like "coral" that supports English, Hindi, and Urdu
         tmp_mp3 = Path(tempfile.gettempdir()) / "bot_reply.mp3"
@@ -428,11 +414,11 @@ with col_right:
         </audio>
         """
         st.components.v1.html(audio_html, height=50)
-        st.session_state.messages.append({"role": "assistant", "content": bot_reply})
         # check if conversation is done
         if "please wait for a few minutes until the doctor calls you" in bot_reply.lower():
             st.success(" Patient intake completed.")
             st.session_state.info_gathered = "YES"
+
 
 
 
@@ -490,9 +476,14 @@ if st.session_state.info_gathered=="YES":
         print("Failed to parse JSON:", e)
     
     pdf_bytes = json_to_pdf(parsed_data)
-    st.download_button(
-        label="📄 Download Patient Intake PDF",
-        data=pdf_bytes,
-        file_name="patient_intake_form.pdf",
-        mime="application/pdf"
-    )
+
+    patient_name = parsed_data.get("name", "patient")
+    report_filename = f"{patient_name}_intake_form"
+
+    with col_mid: 
+        st.download_button(
+            label="📄 Download Patient Intake PDF",
+            data=pdf_bytes,
+            file_name="patient_intake_form.pdf",
+            mime="application/pdf"
+        )
