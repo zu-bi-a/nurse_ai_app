@@ -1,7 +1,9 @@
-from fpdf import FPDF
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import io
-import re
-import datetime   # <-- import datetime here
 
 def json_to_pdf(data: dict) -> bytes:
     # Mapping from JSON keys to human-readable labels
@@ -18,8 +20,8 @@ def json_to_pdf(data: dict) -> bytes:
         "current_medications": "Current Medications",
         "allergies": "Allergies",
         "region": "Region",
-        "partner_name": "Partner’s Name",
-        "partner_age": "Partner’s Age",
+        "partner_name": "Partner's Name",
+        "partner_age": "Partner's Age",
         "pregnancies": "Number of Pregnancies",
         "deliveries": "Number of Deliveries",
         "miscarriages": "Number of Miscarriages",
@@ -36,58 +38,115 @@ def json_to_pdf(data: dict) -> bytes:
         "drinking": "Drink"
     }
 
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-
-    # Title
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Patient Intake Summary", ln=True, align="C")
-    pdf.ln(5)
-
-    # ─── Insert current date and time ─────────────────────────────────────────────────
-    now = datetime.datetime.now()
-    formatted = now.strftime("%Y-%m-%d  %H:%M:%S")  # e.g. "2025-06-02  14:30:05"
-    pdf.set_font("Arial", "", 10)
-    # Place date at left margin
-    pdf.cell(0, 6, f"Generated on: {formatted}", ln=True, align="L")
-    pdf.ln(5)
-    # ────────────────────────────────────────────────────────────────────────────────
-
-    def add_kv(key, value, indent=0):
-        # Determine the label (fallback to raw key if not found)
-        label = key_labels.get(key, key)
-
-        # Compute x‐position based on indent (5 mm per indent level)
-        x_pos = pdf.l_margin + indent * 5
-        pdf.set_x(x_pos)
-
+    # Create a bytes buffer
+    buffer = io.BytesIO()
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=18
+    )
+    
+    # Get default styles and create custom ones
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    section_style = ParagraphStyle(
+        'SectionHeader',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        spaceBefore=20,
+        fontName='Helvetica-Bold',
+        leftIndent=0
+    )
+    
+    subsection_style = ParagraphStyle(
+        'SubsectionHeader',
+        parent=styles['Heading3'],
+        fontSize=12,
+        spaceAfter=8,
+        spaceBefore=15,
+        fontName='Helvetica-Bold',
+        leftIndent=20
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=8,
+        fontName='Helvetica',
+        leftIndent=0
+    )
+    
+    indented_style = ParagraphStyle(
+        'IndentedNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=8,
+        fontName='Helvetica',
+        leftIndent=20
+    )
+    
+    # Story array to hold flowables
+    story = []
+    
+    # Add title
+    story.append(Paragraph("IVF Patient Intake Summary", title_style))
+    story.append(Spacer(1, 20))
+    
+    def add_content(key, value, indent_level=0):
+        """Recursively add content to the story"""
+        # Determine the label
+        label = key_labels.get(key, key.replace('_', ' ').title())
+        
         if isinstance(value, dict):
-            # Section header (bold)
-            pdf.set_font("Arial", "B", 12)
-            pdf.cell(0, 10, f"{label}:", ln=True)
-
-            # Recurse into nested dictionary items
+            # This is a section header
+            if indent_level == 0:
+                story.append(Paragraph(f"<b>{label}</b>", section_style))
+            else:
+                story.append(Paragraph(f"<b>{label}</b>", subsection_style))
+            
+            # Add nested items
             for subkey, subval in value.items():
-                add_kv(subkey, subval, indent + 1)
+                add_content(subkey, subval, indent_level + 1)
         else:
-            # Regular key: show in two columns
-            pdf.set_font("Arial", "", 12)
-
-            # Compute width for the label column (reduce if indented)
-            base_label_width = 60
-            label_width = max(20, base_label_width - indent * 5)
-
-            # First cell: label
-            pdf.cell(label_width, 10, f"{label}:", border=0)
-
-            # Second cell: value (rest of the line)
-            pdf.cell(0, 10, str(value), ln=True)
-
-    # Iterate through top‐level items
-    for top_key, top_val in data.items():
-        add_kv(top_key, top_val)
-
-    # Generate PDF bytes (handle both str and bytes returns)
-    raw = pdf.output(dest="S")
-    return raw.encode("latin-1") if isinstance(raw, str) else raw
+            # This is a key-value pair
+            # Clean up the value for display
+            clean_value = str(value) if value is not None else "Not specified"
+            
+            # Create the formatted text
+            text = f"<b>{label}:</b> {clean_value}"
+            
+            # Choose style based on indent level
+            if indent_level > 0:
+                story.append(Paragraph(text, indented_style))
+            else:
+                story.append(Paragraph(text, normal_style))
+    
+    # Process all data
+    for key, value in data.items():
+        add_content(key, value)
+    
+    # Build the PDF
+    doc.build(story)
+    
+    # Get the PDF bytes
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    return pdf_bytes

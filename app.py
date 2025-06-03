@@ -298,7 +298,7 @@ MODE_META = {
     }
 }
 meta = MODE_META[st.session_state.mode]
-col_left, col_mid, col_right = st.columns([1, 1, 1])   
+col_left, col_right = st.columns([1, 3])   
 
 with col_left:
     if st.button("🏠 Back to Home"):
@@ -309,56 +309,11 @@ with col_left:
     st.title(meta["title"])
     st.image(meta["avatar"], width=180)
 
-with col_mid: 
-    st.write("### Hi, I am your nurse and I'll help you fill out your intake form. Click on the microphone below to speak.")
-    st.write("\n" * 8)
-    # Audio recorder component
-    audio_bytes = audio_recorder(
-        text="",
-        recording_color="#e74c3c",
-        neutral_color="#34495e",
-        icon_name="microphone",
-        icon_size="8x"
-    )
-
-    user_input = ""
-
-    if audio_bytes:
-        try:
-            with st.spinner(""):
-                # Save audio bytes to temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                    tmp_file.write(audio_bytes)
-                    tmp_file_path = tmp_file.name
-                
-                # Transcribe using OpenAI Whisper
-                with open(tmp_file_path, "rb") as audio_file:
-                    transcript = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file,
-                    )
-
-                # Clean up temporary file
-                os.unlink(tmp_file_path)
-
-                raw = transcript.text.strip()
-
-                if re.search(r'[\u0900-\u097F]', raw):
-                    # Hindi in Devanagari → IAST
-                    user_input = dev_trans(raw, DEVANAGARI, IAST)
-                elif re.search(r'[\u0600-\u06FF]', raw):
-                    # Urdu/Arabic script → Latin (IAST)
-                    # aksharamukha uses ISO-15919 by default for 'Arabic'→'IAST'
-                    user_input = ak_trans.process('Arabic', 'IAST', raw)
-                else:
-                    # already Latin (English etc.)
-                    user_input = raw
-                
-        except Exception as e:
-            st.error(f"Error during transcription: {str(e)}")
-
 
 with col_right:
+    conversation_box = st.container(height=600)
+    mic_box = st.container()
+
     fname = load_prompt(st.session_state.mode)
     try:
         with open(fname , "r", encoding="utf-8") as f: 
@@ -371,8 +326,67 @@ with col_right:
     if "current_response_id" not in st.session_state:
         st.session_state.current_response_id = None
     
+    user_input = ""
+
+    with mic_box: 
+        subcol1, subcol2 = st.columns([3, 1])
+        with subcol1:
+            st.write("\n" * 2)
+            st.write("Hi, I am your nurse and I'll help you fill out your intake form. Click on the microphone to speak.")
+        with subcol2:    
+            # Audio recorder component
+            audio_bytes = audio_recorder(
+                text="",
+                recording_color="#e74c3c",
+                neutral_color="#34495e",
+                icon_name="microphone",
+                icon_size="3x"
+            )
+
+        # Initialize session state for tracking processed audio
+        if "last_processed_audio" not in st.session_state:
+            st.session_state.last_processed_audio = None
+        
+        user_input = ""
+        
+        if audio_bytes and audio_bytes != st.session_state.last_processed_audio:
+            try:
+                with st.spinner(""):
+                    # Save audio bytes to temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+                        tmp_file.write(audio_bytes)
+                        tmp_file_path = tmp_file.name
+                    
+                    # Transcribe using OpenAI Whisper
+                    with open(tmp_file_path, "rb") as audio_file:
+                        transcript = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                        )
+
+                    # Clean up temporary file
+                    os.unlink(tmp_file_path)
+
+                    raw = transcript.text.strip()
+
+                    if re.search(r'[\u0900-\u097F]', raw):
+                        # Hindi in Devanagari → IAST
+                        user_input = dev_trans(raw, DEVANAGARI, IAST)
+                    elif re.search(r'[\u0600-\u06FF]', raw):
+                        # Urdu/Arabic script → Latin (IAST)
+                        user_input = ak_trans.process('Arabic', 'IAST', raw)
+                    else:
+                        # already Latin (English etc.)
+                        user_input = raw
+                    
+                    # Mark this audio as processed
+                    st.session_state.last_processed_audio = audio_bytes
+                    
+            except Exception as e:
+                st.error(f"Error during transcription: {str(e)}")
+    
     # Wrap messages in a fixed height container
-    with st.container(height=600):
+    with conversation_box:
         # Display all messages in the conversation
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
@@ -393,6 +407,8 @@ with col_right:
             lang = detect_script(bot_reply)
             st.chat_message("assistant").markdown(bot_reply)
             st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+
+    
     
     # Keep audio and other elements outside the scrollable container
     if user_input:
@@ -419,7 +435,7 @@ with col_right:
             st.success(" Patient intake completed.")
             st.session_state.info_gathered = "YES"
 
-
+        user_input = ""
 
 
 if st.session_state.info_gathered=="YES":
@@ -478,9 +494,9 @@ if st.session_state.info_gathered=="YES":
     pdf_bytes = json_to_pdf(parsed_data)
 
     patient_name = parsed_data.get("name", "patient")
-    report_filename = f"{patient_name}_intake_form"
+    report_filename = f"{patient_name}_intake_form.pdf"
 
-    with col_mid: 
+    with col_left: 
         st.download_button(
             label="📄 Download Patient Intake PDF",
             data=pdf_bytes,
