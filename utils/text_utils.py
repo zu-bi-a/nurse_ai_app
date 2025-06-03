@@ -106,7 +106,7 @@ def json_to_pdf(data: dict) -> bytes:
     story = []
     
     # Add title
-    story.append(Paragraph("IVF Patient Intake Summary", title_style))
+    story.append(Paragraph("Patient Intake Summary", title_style))
     story.append(Spacer(1, 20))
     
     def add_content(key, value, indent_level=0):
