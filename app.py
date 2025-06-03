@@ -10,6 +10,7 @@ from indic_transliteration.sanscript import transliterate as dev_trans, DEVANAGA
 from aksharamukha import transliterate as ak_trans
 from utils.text_utils import json_to_pdf
 from utils.audio_utils import detect_script
+from streamlit_realtime_audio_recorder import audio_recorder
 
 client = OpenAI()
 MODEL = "gpt-4o-mini"  
@@ -302,10 +303,14 @@ col_left, col_right = st.columns([1, 3])
 
 with col_left:
     if st.button("🏠 Back to Home"):
-        st.session_state.mode = None
-        st.session_state.info_gathered = "NO"
-        st.session_state.messages = []
-        st.session_state.current_response_id = None
+        # Clear all session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        
+        # Force a complete refresh by changing query params
+        st.query_params.clear()
+        st.query_params["refresh"] = str(datetime.datetime.now().timestamp())
+        st.rerun()
     st.title(meta["title"])
     st.image(meta["avatar"], width=180)
 
@@ -313,6 +318,7 @@ with col_left:
 with col_right:
     conversation_box = st.container(height=600)
     mic_box = st.container()
+    audio_bytes = ""
 
     fname = load_prompt(st.session_state.mode)
     try:
@@ -335,13 +341,25 @@ with col_right:
             st.write("Hi, I am your nurse and I'll help you fill out your intake form. Click on the microphone to speak.")
         with subcol2:    
             # Audio recorder component
-            audio_bytes = audio_recorder(
-                text="",
-                recording_color="#e74c3c",
-                neutral_color="#34495e",
-                icon_name="microphone",
-                icon_size="3x"
-            )
+            if st.session_state.get("info_gathered", "") != "YES":
+                result = audio_recorder(
+                    interval=100,
+                    threshold=-50,
+                    silenceTimeout=200
+                )
+                if result:
+                    if result.get('status') == 'stopped':
+                        audio_data = result.get('audioData')
+                        if audio_data:
+                            audio_bytes = base64.b64decode(audio_data)
+                            # audio_file = io.BytesIO(audio_bytes)
+                        else:
+                            pass
+                    elif result.get('error'):
+                            st.error(f"Error: {result.get('error')}")
+            else:
+                # Intake is already done → skip rendering the recorder
+                result = None
 
         # Initialize session state for tracking processed audio
         if "last_processed_audio" not in st.session_state:
@@ -434,6 +452,7 @@ with col_right:
         if "please wait for a few minutes until the doctor calls you" in bot_reply.lower():
             st.success(" Patient intake completed.")
             st.session_state.info_gathered = "YES"
+            st.experimental_rerun()
 
         user_input = ""
 
